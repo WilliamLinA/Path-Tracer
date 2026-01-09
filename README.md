@@ -23,7 +23,7 @@ cmake --build . --config Release
 
 ```bash
 cd build
-./bin/Release/ImageRenderer.exe | Out-File -Encoding ascii image.ppm
+./bin/Release/ImageRenderer.exe | Out-File -Encoding ascii cornell_box.ppm
 magick cornell_box.ppm cornell_box.png
 ```
 
