@@ -23,9 +23,10 @@ cmake --build . --config Release
 
 ```bash
 cd build
-.\bin\Release\ImageRenderer.exe > cornell_box.ppm
+./bin/Release/ImageRenderer.exe | Out-File -Encoding ascii image.ppm
 magick cornell_box.ppm cornell_box.png
 ```
+
 
 ## Scene Configuration
 
