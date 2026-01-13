@@ -8,7 +8,7 @@
 using color = vec3; // Color is an alias for vec3
 
 // Write Color to Output Stream with sampling support
-void write_color(std::ostream &out, color pixel_color, int samples_per_pixel) {
+inline void write_color(std::ostream &out, color pixel_color, int samples_per_pixel) {
     auto r = pixel_color.x();
     auto g = pixel_color.y();
     auto b = pixel_color.z();
@@ -31,7 +31,7 @@ void write_color(std::ostream &out, color pixel_color, int samples_per_pixel) {
 }
 
 // Original version without sampling (for compatibility)
-void write_color(std::ostream &out, color pixel_color) {
+inline void write_color(std::ostream &out, color pixel_color) {
     // Scale color components to [0,255]
     int ir = static_cast<int>(255.999 * pixel_color.x());
     int ig = static_cast<int>(255.999 * pixel_color.y());
