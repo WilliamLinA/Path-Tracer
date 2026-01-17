@@ -46,6 +46,9 @@ Makefile
 *.swo
 *~
 
+# GitHub configuration
+.github/
+
 # OS files
 .DS_Store
 Thumbs.db

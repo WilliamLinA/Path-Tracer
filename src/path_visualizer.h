@@ -275,6 +275,7 @@ public:
         // Export Cornell Box geometry
         if (include_scene) {
             obj << "# Cornell Box Geometry\n";
+            obj << "o CornellBox\n";  // Object name for Cornell Box
             obj << "usemtl BoxWhite\n";  // Use white/semi-transparent material for box
             write_cornell_box_geometry(obj, vertex_offset);
             obj << "\n";
@@ -282,13 +283,15 @@ public:
         
         // Export light paths
         obj << "# Light Paths\n";
-        obj << "usemtl GreenPath\n";  // Use green material for paths
         double path_radius = 0.5;  // Thickness of path lines (thinner for cleaner visualization)
         double vertex_radius = 1.0; // Size of path vertices
         
         int path_num = 0;
         for (const auto& path : paths) {
-            obj << "# Path " << path_num++ << " (depth: " << path.depth << ")\n";
+            obj << "# Path " << path_num << " (depth: " << path.depth << ")\n";
+            obj << "o LightPath_" << path_num << "\n";  // Each path as separate object
+            obj << "usemtl GreenPath\n";  // Use green material for this path
+            path_num++;
             
             // Draw line segments
             for (size_t i = 0; i + 1 < path.vertices.size(); ++i) {

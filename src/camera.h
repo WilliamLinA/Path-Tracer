@@ -31,7 +31,7 @@ public:
 
     ray get_ray(double s, double t) const {
         vec3 direction = lower_left_corner + s*horizontal + t*vertical - origin;
-        return ray(origin, unit_vector(direction));  // Normalize direction!
+        return ray(origin, unit_vector(direction));  // Normalized direction
     }
 
 private:
