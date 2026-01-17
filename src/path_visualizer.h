@@ -276,6 +276,7 @@ public:
         if (include_scene) {
             obj << "# Cornell Box Geometry\n";
             obj << "o CornellBox\n";  // Object name for Cornell Box
+            obj << "g CornellBox\n";  // Group name for better Unity compatibility
             obj << "usemtl BoxWhite\n";  // Use white/semi-transparent material for box
             write_cornell_box_geometry(obj, vertex_offset);
             obj << "\n";
@@ -290,6 +291,7 @@ public:
         for (const auto& path : paths) {
             obj << "# Path " << path_num << " (depth: " << path.depth << ")\n";
             obj << "o LightPath_" << path_num << "\n";  // Each path as separate object
+            obj << "g LightPath_" << path_num << "\n";  // Group name for better Unity compatibility
             obj << "usemtl GreenPath\n";  // Use green material for this path
             path_num++;
             

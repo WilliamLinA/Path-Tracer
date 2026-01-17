@@ -49,6 +49,9 @@ Makefile
 # GitHub configuration
 .github/
 
+# Documentation files
+.doc/
+
 # OS files
 .DS_Store
 Thumbs.db
