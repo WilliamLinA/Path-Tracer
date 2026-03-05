@@ -69,6 +69,92 @@ public:
     }
 };
 
+// === MLT-specific visualization structures ===
+
+// Record of a single MLT mutation step
+struct MLTMutationRecord {
+    LightPath proposed_path;       // Proposed path geometry
+    LightPath current_path;        // Current path geometry before this mutation
+    color proposed_color;           // Color contribution of proposed path
+    color current_color;            // Color contribution of current path
+    double proposed_luminance;      // Luminance of proposed path
+    double current_luminance;       // Luminance of current path
+    double acceptance_prob;         // Metropolis acceptance probability
+    bool accepted;                  // Was this mutation accepted?
+    bool large_step;                // Was this a large step mutation?
+    int mutation_index;             // Mutation number in chain
+    int proposed_x, proposed_y;     // Proposed pixel coordinates
+    int current_x, current_y;      // Current pixel coordinates
+
+    MLTMutationRecord()
+        : proposed_luminance(0), current_luminance(0), acceptance_prob(0),
+          accepted(false), large_step(false), mutation_index(0),
+          proposed_x(0), proposed_y(0), current_x(0), current_y(0) {}
+};
+
+// Record of one complete Markov chain's mutation history
+struct MLTChainRecord {
+    int chain_id;
+    std::vector<MLTMutationRecord> mutations;
+    LightPath seed_path;
+    color seed_color;
+    double seed_luminance;
+
+    MLTChainRecord() : chain_id(0), seed_luminance(0) {}
+};
+
+// Recorder that captures MLT mutation history for visualization/debugging
+class MLTPathRecorder {
+private:
+    std::vector<MLTChainRecord> m_chains;
+    MLTChainRecord m_current_chain;
+    int m_max_chains;
+    int m_max_mutations_per_chain;
+    bool m_recording;
+
+public:
+    MLTPathRecorder(int max_chains = 5, int max_mutations = 30)
+        : m_max_chains(max_chains), m_max_mutations_per_chain(max_mutations),
+          m_recording(false) {}
+
+    bool should_record_chain() const {
+        return static_cast<int>(m_chains.size()) < m_max_chains;
+    }
+
+    void start_chain(int chain_id) {
+        if (should_record_chain()) {
+            m_current_chain = MLTChainRecord();
+            m_current_chain.chain_id = chain_id;
+            m_recording = true;
+        }
+    }
+
+    void end_chain() {
+        if (m_recording) {
+            m_chains.push_back(m_current_chain);
+            m_recording = false;
+        }
+    }
+
+    void record_seed(const LightPath& path, const color& c, double luminance) {
+        if (m_recording) {
+            m_current_chain.seed_path = path;
+            m_current_chain.seed_color = c;
+            m_current_chain.seed_luminance = luminance;
+        }
+    }
+
+    void record_mutation(const MLTMutationRecord& rec) {
+        if (m_recording &&
+            static_cast<int>(m_current_chain.mutations.size()) < m_max_mutations_per_chain) {
+            m_current_chain.mutations.push_back(rec);
+        }
+    }
+
+    bool is_recording() const { return m_recording; }
+    const std::vector<MLTChainRecord>& get_chains() const { return m_chains; }
+};
+
 // OBJ exporter for visualizing paths in Unity/Blender
 class PathVisualizer {
 private:
@@ -313,6 +399,137 @@ public:
         }
         
         obj.close();
+        return true;
+    }
+
+    // Export MLT mutation paths to OBJ for visualization
+    // Color coding: green=accepted(small), blue=accepted(large),
+    //               red=rejected(small), orange=rejected(large), white=seed
+    static bool export_mlt_paths_to_obj(const std::string& filename,
+                                         const std::vector<MLTChainRecord>& chains,
+                                         bool include_scene = true) {
+        std::ofstream obj(filename);
+        if (!obj.is_open()) {
+            std::cerr << "Failed to open file: " << filename << std::endl;
+            return false;
+        }
+
+        // Generate MTL file with MLT-specific materials
+        std::string mtl_filename = filename.substr(0, filename.find_last_of('.')) + ".mtl";
+        std::ofstream mtl(mtl_filename);
+        if (mtl.is_open()) {
+            mtl << "# MLT Path Visualization Materials\n\n";
+
+            mtl << "newmtl AcceptedSmall\n";
+            mtl << "Kd 0.0 0.8 0.2\nNs 10.0\nd 0.9\nillum 2\n\n";
+
+            mtl << "newmtl AcceptedLarge\n";
+            mtl << "Kd 0.2 0.4 1.0\nNs 10.0\nd 0.9\nillum 2\n\n";
+
+            mtl << "newmtl RejectedSmall\n";
+            mtl << "Kd 0.8 0.1 0.1\nNs 10.0\nd 0.4\nillum 2\n\n";
+
+            mtl << "newmtl RejectedLarge\n";
+            mtl << "Kd 1.0 0.5 0.0\nNs 10.0\nd 0.4\nillum 2\n\n";
+
+            mtl << "newmtl SeedPath\n";
+            mtl << "Kd 1.0 1.0 1.0\nNs 10.0\nd 1.0\nillum 2\n\n";
+
+            mtl << "newmtl BoxWhite\n";
+            mtl << "Ka 0.7 0.7 0.7\nKd 0.73 0.73 0.73\nKs 0.0 0.0 0.0\nd 0.3\nillum 1\n";
+
+            mtl.close();
+        }
+
+        obj << "# MLT Mutation Path Visualization\n";
+        obj << "# Chain colors: white=seed, green=accepted(small), blue=accepted(large)\n";
+        obj << "#               red=rejected(small), orange=rejected(large)\n";
+        obj << "mtllib " << mtl_filename.substr(mtl_filename.find_last_of("/\\") + 1) << "\n\n";
+
+        int vertex_offset = 1;
+
+        // Cornell Box geometry
+        if (include_scene) {
+            obj << "o CornellBox\ng CornellBox\nusemtl BoxWhite\n";
+            write_cornell_box_geometry(obj, vertex_offset);
+            obj << "\n";
+        }
+
+        int chain_num = 0;
+        for (const auto& chain : chains) {
+            obj << "# === Chain " << chain_num << " (seed luminance: "
+                << chain.seed_luminance << ") ===\n";
+
+            // Export seed path
+            if (chain.seed_path.vertices.size() > 1) {
+                obj << "o Chain" << chain_num << "_Seed\n";
+                obj << "g Chain" << chain_num << "_Seed\nusemtl SeedPath\n";
+                for (size_t i = 0; i + 1 < chain.seed_path.vertices.size(); ++i) {
+                    write_cylinder(obj, chain.seed_path.vertices[i].position,
+                                  chain.seed_path.vertices[i+1].position, 1.0, vertex_offset);
+                }
+                for (const auto& v : chain.seed_path.vertices) {
+                    write_sphere(obj, v.position, 2.0, vertex_offset);
+                }
+            }
+
+            // Export mutations
+            int mut_num = 0;
+            for (const auto& mut : chain.mutations) {
+                // Choose material and radius based on mutation type
+                std::string material;
+                double radius;
+                if (mut.accepted && mut.large_step) {
+                    material = "AcceptedLarge"; radius = 0.8;
+                } else if (mut.accepted) {
+                    material = "AcceptedSmall"; radius = 0.6;
+                } else if (mut.large_step) {
+                    material = "RejectedLarge"; radius = 0.3;
+                } else {
+                    material = "RejectedSmall"; radius = 0.2;
+                }
+
+                obj << "o Chain" << chain_num << "_Mut" << mut_num
+                    << (mut.accepted ? "_ACC" : "_REJ") << "\n";
+                obj << "g Chain" << chain_num << "_Mut" << mut_num << "\n";
+                obj << "# a=" << mut.acceptance_prob
+                    << " L_prop=" << mut.proposed_luminance
+                    << " L_curr=" << mut.current_luminance << "\n";
+                obj << "usemtl " << material << "\n";
+
+                // Draw the proposed path geometry
+                const LightPath& vis_path = mut.proposed_path;
+                for (size_t i = 0; i + 1 < vis_path.vertices.size(); ++i) {
+                    write_cylinder(obj, vis_path.vertices[i].position,
+                                  vis_path.vertices[i+1].position, radius, vertex_offset);
+                }
+                for (const auto& v : vis_path.vertices) {
+                    write_sphere(obj, v.position, radius * 1.5, vertex_offset);
+                }
+
+                mut_num++;
+            }
+
+            chain_num++;
+            obj << "\n";
+        }
+
+        obj.close();
+
+        // Print summary to stderr
+        std::clog << "Exported " << chains.size() << " MLT chains to " << filename << "\n";
+        for (const auto& chain : chains) {
+            int accepted = 0, large = 0;
+            for (const auto& m : chain.mutations) {
+                if (m.accepted) accepted++;
+                if (m.large_step) large++;
+            }
+            std::clog << "  Chain " << chain.chain_id << ": " << chain.mutations.size()
+                      << " mutations (" << accepted << " accepted, "
+                      << large << " large steps)"
+                      << " seed_L=" << chain.seed_luminance << "\n";
+        }
+
         return true;
     }
 };
