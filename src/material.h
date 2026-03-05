@@ -3,10 +3,11 @@
 
 #include "rtweekend.h"
 #include "hittable.h"
+#include "mlt_sampler.h"
 
 class material {
 public:
-    virtual bool scatter(const ray& r_in, const hit_record& rec, color& attenuation, ray& scattered) const = 0;
+    virtual bool scatter(const ray& r_in, const hit_record& rec, color& attenuation, ray& scattered, MLTSampler* sampler = nullptr) const = 0;
     virtual color emitted() const {
         return color(0, 0, 0);
     }
@@ -17,8 +18,16 @@ class lambertian : public material {
 public:
     lambertian(const color& a) : albedo(a) {}
 
-    virtual bool scatter(const ray& r_in, const hit_record& rec, color& attenuation, ray& scattered) const override {
-        auto scatter_direction = rec.normal + random_unit_vector();
+    virtual bool scatter(const ray& r_in, const hit_record& rec, color& attenuation, ray& scattered, MLTSampler* sampler = nullptr) const override {
+        vec3 scatter_direction;
+        
+        if (sampler) {
+            // Use MLT sampler for deterministic sampling
+            scatter_direction = rec.normal + random_unit_vector_mlt(sampler);
+        } else {
+            // Use standard random sampling
+            scatter_direction = rec.normal + random_unit_vector();
+        }
         
         // Catch degenerate scatter direction
         if (near_zero(scatter_direction))
@@ -39,6 +48,13 @@ private:
         auto r = sqrt(1 - z*z);
         return vec3(r*cos(a), r*sin(a), z);
     }
+    
+    static vec3 random_unit_vector_mlt(MLTSampler* sampler) {
+        auto a = sampler->next() * 2 * pi;
+        auto z = sampler->next() * 2 - 1;
+        auto r = sqrt(1 - z*z);
+        return vec3(r*cos(a), r*sin(a), z);
+    }
 
     static bool near_zero(const vec3& v) {
         const auto s = 1e-8;
@@ -51,7 +67,7 @@ class diffuse_light : public material {
 public:
     diffuse_light(const color& c) : emit_color(c) {}
 
-    virtual bool scatter(const ray& r_in, const hit_record& rec, color& attenuation, ray& scattered) const override {
+    virtual bool scatter(const ray& r_in, const hit_record& rec, color& attenuation, ray& scattered, MLTSampler* sampler = nullptr) const override {
         return false;
     }
 
